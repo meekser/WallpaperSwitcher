@@ -1,8 +1,7 @@
 /*
- * Preferences for Wallpaper Switcher, ported to GNOME Shell 45–50+ ESM APIs.
+ * Preferences for Wallpaper Switcher, using GNOME Shell 45+ ESM APIs.
  */
 
-import Adw from 'gi://Adw';
 import Gdk from 'gi://Gdk';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -29,8 +28,8 @@ export default class WallpaperSwitcherPreferences extends ExtensionPreferences {
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         );
 
-        this._settings = this.getSettings();
-        lib.setSettings(this._settings);
+        const settings = this.getSettings();
+        lib.setSettings(settings);
 
         const builder = Gtk.Builder.new();
         builder.add_from_file(GLib.build_filenamev([this.path, 'prefs.ui']));
@@ -45,32 +44,50 @@ export default class WallpaperSwitcherPreferences extends ExtensionPreferences {
         const errorRow = builder.get_object('error-row');
         const errorView = builder.get_object('error-view');
 
+        window.connectObject(
+            'close-request', () => lib.setSettings(null),
+            window
+        );
+
         const dropErrors = ['WC', 'NIF', 'PNE', 'Reset'];
         if (dropErrors.includes(lib.getErrorMsg().split(':--')[0]))
             lib.setErrorMsg('');
 
-        this._settings.bind(
+        settings.bind(
             'frequency',
             frequencyChanger,
             'value',
             Gio.SettingsBindFlags.DEFAULT
         );
 
-        switchingModeComboRow.connect('notify::selected-item', () => {
-            lib.setSwitchingMode(switchingModeComboRow.selected);
-        });
+        switchingModeComboRow.connectObject(
+            'notify::selected-item', () => {
+                lib.setSwitchingMode(switchingModeComboRow.selected);
+            },
+            window
+        );
         switchingModeComboRow.selected = lib.getSwitchingMode();
 
-        const updatePathEntry = () => {
+        let validationToken = 0;
+        const updatePathEntry = async () => {
             const path = wallpaperPathEntry.text.trim();
-            const validCount = path ? lib.getWallpaperList(path).length : 0;
+            const token = ++validationToken;
 
-            if (validCount > 0) {
+            if (!path) {
+                wallpaperPathEntry.primary_icon_name = 'mail-mark-junk-symbolic';
+                return;
+            }
+
+            const wallpapers = await lib.getWallpaperList(path);
+            if (token !== validationToken)
+                return;
+
+            if (wallpapers.length > 0) {
                 wallpaperPathEntry.primary_icon_name = 'go-next-symbolic';
                 wallpaperPathRow.subtitle = path;
                 wallpaperPathRow.expanded = false;
                 lib.setWallpaperPath(path);
-                lib.setErrorMsg(`WC:--${validCount}`);
+                lib.setErrorMsg(`WC:--${wallpapers.length}`);
             } else {
                 wallpaperPathEntry.primary_icon_name = 'mail-mark-junk-symbolic';
             }
@@ -79,24 +96,34 @@ export default class WallpaperSwitcherPreferences extends ExtensionPreferences {
         wallpaperPathRow.subtitle = lib.getWallpaperPath();
         wallpaperPathEntry.text = lib.getWallpaperPath();
         wallpaperPathEntry.primary_icon_name = 'go-next-symbolic';
-        wallpaperPathEntry.connect('activate', updatePathEntry);
-        wallpaperPathEntry.connect('icon-release', updatePathEntry);
 
-        showCurrentButton.connect('clicked', () => {
-            const wallpaper = lib.getCurrentWallpaperUri();
-            if (!wallpaper)
-                return;
+        wallpaperPathEntry.connectObject(
+            'activate', () => void updatePathEntry(),
+            'icon-release', () => void updatePathEntry(),
+            window
+        );
 
-            const command = `nautilus -s ${GLib.shell_quote(wallpaper)}`;
-            GLib.spawn_command_line_async(command);
-        });
+        showCurrentButton.connectObject(
+            'clicked', () => {
+                const wallpaper = lib.getCurrentWallpaperUri();
+                if (!wallpaper)
+                    return;
 
-        resetButton.connect('clicked', () => {
-            lib.setFrequency(300);
-            lib.setWallpaperPath('/usr/share/backgrounds');
-            switchingModeComboRow.selected = 1;
-            lib.setErrorMsg('Reset');
-        });
+                const command = `nautilus -s ${GLib.shell_quote(wallpaper)}`;
+                GLib.spawn_command_line_async(command);
+            },
+            window
+        );
+
+        resetButton.connectObject(
+            'clicked', () => {
+                lib.setFrequency(300);
+                lib.setWallpaperPath('/usr/share/backgrounds');
+                switchingModeComboRow.selected = 1;
+                lib.setErrorMsg('Reset');
+            },
+            window
+        );
 
         const showSimpleError = (iconName, title) => {
             const actionRow = errorRow.get_first_child()?.get_first_child()?.get_first_child();
@@ -184,13 +211,11 @@ export default class WallpaperSwitcherPreferences extends ExtensionPreferences {
         };
 
         updateErrorShowStatus();
-        this._settings.connect('changed::error-msg', updateErrorShowStatus);
+        settings.connectObject(
+            'changed::error-msg', updateErrorShowStatus,
+            window
+        );
 
         window.add(builder.get_object('prefs-page'));
-    }
-
-    disable() {
-        this._settings = null;
-        lib.setSettings(null);
     }
 }

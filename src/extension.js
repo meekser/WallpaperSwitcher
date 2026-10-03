@@ -1,6 +1,6 @@
 /*
  * Wallpaper Switcher
- * GNOME Shell 45–50+ port of the original extension.
+ * GNOME Shell 46, 48, and 50 port of the original extension.
  *
  * Original project: https://github.com/rishuinfinity/WallpaperSwitcher
  * Original author: Rishu Raj
@@ -21,87 +21,74 @@ const WALLPAPER_OVERLAY_UUID = 'WallpaperOverlay@Rishu';
 
 export default class WallpaperSwitcherExtension extends Extension {
     enable() {
-        try {
-            this._settings = this.getSettings();
-            lib.setSettings(this._settings);
+        this._settings = this.getSettings();
+        lib.setSettings(this._settings);
 
-            this._timeoutId = 0;
-            this._imageIndex = -1;
-            this._wallpaperOverlaySettings = null;
-            this._wallpaperOverlayHandler = 0;
-            this._tooltipTimeoutId = 0;
+        this._cancellable = new Gio.Cancellable();
+        this._changingWallpaper = false;
+        this._timeoutId = 0;
+        this._imageIndex = -1;
+        this._wallpaperOverlaySettings = null;
 
-            this._indicator = new PanelMenu.Button(0.0, this.metadata.name, false);
-            this._indicator.accessible_name = this.metadata.name;
-            const icon = new St.Icon({
-                icon_name: 'preferences-desktop-wallpaper-symbolic',
-                style_class: 'system-status-icon',
-            });
-            this._indicator.add_child(icon);
-            Main.panel.addToStatusArea(this.uuid, this._indicator);
-            this._indicator.menu.addAction('Preferences', () => this.openPreferences());
+        this._indicator = new PanelMenu.Button(0.0, this.metadata.name, false);
+        this._indicator.accessible_name = this.metadata.name;
 
-            this._tooltip = new St.Label({
-                style_class: 'dash-label',
-                visible: false,
-                text: this.metadata.name,
-            });
-            Main.uiGroup.add_child(this._tooltip);
-            this._indicatorHoverHandler = this._indicator.connect(
-                'notify::hover',
-                () => this._syncTooltip()
-            );
+        const icon = new St.Icon({
+            icon_name: 'preferences-desktop-wallpaper-symbolic',
+            style_class: 'system-status-icon',
+        });
+        this._indicator.add_child(icon);
+        Main.panel.addToStatusArea(this.uuid, this._indicator);
+        this._indicator.menu.addAction('Preferences', () => this.openPreferences());
 
-            this._updateTimer();
+        this._tooltip = new St.Label({
+            style_class: 'dash-label',
+            visible: false,
+            text: this.metadata.name,
+        });
+        Main.uiGroup.add_child(this._tooltip);
 
-            this._modeHandler = this._settings.connect('changed::switching-mode', () => {
-                this._updateTimer();
-            });
-            this._frequencyHandler = this._settings.connect('changed::frequency', () => {
-                this._updateTimer();
-            });
+        this._indicator.connectObject(
+            'notify::hover', () => this._syncTooltip(),
+            this
+        );
 
-            this._extensionManagerHandler = Main.extensionManager.connect(
-                'extension-state-changed',
-                () => this._updateTimer(true)
-            );
+        this._settings.connectObject(
+            'changed::switching-mode', () => this._updateTimer(),
+            'changed::frequency', () => this._updateTimer(),
+            this
+        );
 
-            this._updateWallpaperOverlayIntegration();
-        } catch (e) {
-            lib.saveExceptionLog(e);
-        }
+        Main.extensionManager.connectObject(
+            'extension-state-changed', () => this._updateTimer(true),
+            this
+        );
+
+        this._updateWallpaperOverlayIntegration();
+        this._updateTimer();
     }
 
     disable() {
         this._clearTimer();
         this._hideTooltip();
 
-        if (this._indicator && this._indicatorHoverHandler)
-            this._indicator.disconnect(this._indicatorHoverHandler);
-        this._indicatorHoverHandler = 0;
+        this._cancellable?.cancel();
+
+        this._indicator?.disconnectObject(this);
+        this._settings?.disconnectObject(this);
+        Main.extensionManager.disconnectObject(this);
+        this._wallpaperOverlaySettings?.disconnectObject(this);
+
         this._tooltip?.destroy();
-        this._tooltip = null;
         this._indicator?.destroy();
+
+        this._tooltip = null;
         this._indicator = null;
-
-        if (this._settings && this._modeHandler)
-            this._settings.disconnect(this._modeHandler);
-        if (this._settings && this._frequencyHandler)
-            this._settings.disconnect(this._frequencyHandler);
-        if (this._extensionManagerHandler)
-            Main.extensionManager.disconnect(this._extensionManagerHandler);
-        if (this._wallpaperOverlaySettings && this._wallpaperOverlayHandler)
-            this._wallpaperOverlaySettings.disconnect(this._wallpaperOverlayHandler);
-
         this._settings = null;
-        this._modeHandler = 0;
-        this._frequencyHandler = 0;
-        this._extensionManagerHandler = 0;
-        this._wallpaperOverlaySettings = null;
-        this._wallpaperOverlayHandler = 0;
-        this._timeoutId = 0;
+        this._cancellable = null;
+        this._changingWallpaper = false;
         this._imageIndex = -1;
-        this._tooltipTimeoutId = 0;
+        this._wallpaperOverlaySettings = null;
 
         lib.setSettings(null);
     }
@@ -174,7 +161,7 @@ export default class WallpaperSwitcherExtension extends Extension {
                 'org.gnome.shell.extensions.WallpaperOverlay',
                 extension
             );
-        } catch (e) {
+        } catch (_) {
             return null;
         }
     }
@@ -185,38 +172,45 @@ export default class WallpaperSwitcherExtension extends Extension {
         if (this._wallpaperOverlaySettings === newSettings)
             return;
 
-        if (this._wallpaperOverlaySettings && this._wallpaperOverlayHandler)
-            this._wallpaperOverlaySettings.disconnect(this._wallpaperOverlayHandler);
-
+        this._wallpaperOverlaySettings?.disconnectObject(this);
         this._wallpaperOverlaySettings = newSettings;
-        this._wallpaperOverlayHandler = 0;
 
         if (this._wallpaperOverlaySettings) {
-            this._wallpaperOverlayHandler = this._wallpaperOverlaySettings.connect(
-                'changed::is-auto-apply',
-                () => this._updateTimer(true)
+            this._wallpaperOverlaySettings.connectObject(
+                'changed::is-auto-apply', () => this._updateTimer(true),
+                this
             );
         }
     }
 
     _getWallpaperSetter() {
-        let wallpaperSetter = lib.getWallpaperSetterFunction();
-
         if (this._wallpaperOverlaySettings?.get_boolean('is-auto-apply')) {
-            wallpaperSetter = lib.getWallpaperWithOverlaySetterFunction(
+            lib.setErrorMsg('UWO');
+            return lib.getWallpaperWithOverlaySetterFunction(
                 this._wallpaperOverlaySettings
             );
-            lib.setErrorMsg('UWO');
         }
 
-        return wallpaperSetter;
+        return lib.getWallpaperSetterFunction();
     }
 
     _changeWallpaper() {
+        if (this._changingWallpaper || !this._cancellable)
+            return;
+
+        const cancellable = this._cancellable;
+        this._changingWallpaper = true;
+        void this._changeWallpaperAsync(cancellable);
+    }
+
+    async _changeWallpaperAsync(cancellable) {
         try {
-            const wallpapers = lib.getWallpaperList();
+            const wallpapers = await lib.getWallpaperList(undefined, cancellable);
+            if (cancellable.is_cancelled() || this._cancellable !== cancellable)
+                return;
+
             if (wallpapers.length === 0)
-                return GLib.SOURCE_CONTINUE;
+                return;
 
             let index;
             if (lib.getSwitchingMode() === 1) {
@@ -228,10 +222,12 @@ export default class WallpaperSwitcherExtension extends Extension {
 
             this._getWallpaperSetter()(wallpapers[index]);
         } catch (e) {
-            lib.saveExceptionLog(e);
+            if (!cancellable.is_cancelled())
+                console.error(`Wallpaper Switcher: failed to change wallpaper: ${e}`);
+        } finally {
+            if (this._cancellable === cancellable)
+                this._changingWallpaper = false;
         }
-
-        return GLib.SOURCE_CONTINUE;
     }
 
     _updateTimer(checkWallpaperOverlay = false) {
@@ -240,16 +236,14 @@ export default class WallpaperSwitcherExtension extends Extension {
         if (checkWallpaperOverlay)
             this._updateWallpaperOverlayIntegration();
 
-        try {
-            const frequency = Math.max(3, lib.getFrequency());
-            this._timeoutId = GLib.timeout_add_seconds(
-                GLib.PRIORITY_DEFAULT,
-                frequency,
-                () => this._changeWallpaper()
-            );
-        } catch (e) {
-            lib.saveExceptionLog(e);
-            this._timeoutId = 0;
-        }
+        const frequency = Math.max(3, lib.getFrequency());
+        this._timeoutId = GLib.timeout_add_seconds(
+            GLib.PRIORITY_DEFAULT,
+            frequency,
+            () => {
+                this._changeWallpaper();
+                return GLib.SOURCE_CONTINUE;
+            }
+        );
     }
 }
