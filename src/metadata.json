@@ -3,6 +3,7 @@
   "name": "Wallpaper Switcher (Meekser)",
   "description": "Automatically changes the desktop wallpaper after a configurable interval. Fork of Wallpaper Switcher by Rishu Raj.",
   "shell-version": [
+    "48",
     "50"
   ],
   "url": "https://github.com/meekser/WallpaperSwitcher",
