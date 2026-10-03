@@ -51,6 +51,7 @@ https://github.com/rishuinfinity/WallpaperSwitcher
   <img src="screenshots/2.gif" />
   <br/>
   <img src="screenshots/5.png" />
+  <br/>
   <img src="screenshots/1.png" />
 
 </p>
