@@ -49,7 +49,7 @@ https://github.com/rishuinfinity/WallpaperSwitcher
 ## Screenshots
 <p align="center">
   <img src="screenshots/2.gif" />
-  <br/>
+  <br/><br/>
   <img src="screenshots/5.png" />
   <br/>
   <img src="screenshots/1.png" />
