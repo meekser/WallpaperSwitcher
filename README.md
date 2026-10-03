@@ -50,11 +50,12 @@ https://github.com/rishuinfinity/WallpaperSwitcher
 <p align="center">
   <img src="screenshots/2.gif" />
   <br/>
+  <img src="screenshots/5.png" />
   <img src="screenshots/1.png" />
+
 </p>
 <!-- ![Screenshot](screenshots/4.png)
 ![Screenshot](screenshots/3.png)
-![Screenshot](screenshots/5.png)
 ![Screenshot](screenshots/2.png)
 ![Screenshot](screenshots/setting.png) -->
 
