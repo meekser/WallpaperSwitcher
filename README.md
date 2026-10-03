@@ -9,15 +9,10 @@ A Gnome extension to change wallpapers after given interval of time.
 
 ## GNOME 46, 48 and 50 fork
 
-This is a fork of [WallpaperSwitcher](https://github.com/rishuinfinity/WallpaperSwitcher)
-maintained by Meekser.
+This is a fork of discontinued [WallpaperSwitcher](https://github.com/rishuinfinity/WallpaperSwitcher)
 
 This fork updates the extension for GNOME Shell versions 46, 48 and 50,
 and adds a panel indicator for quick access to the extension preferences.
-
-Original project:
-https://github.com/rishuinfinity/WallpaperSwitcher
-
 
 ## Table of Contents
 
@@ -37,9 +32,8 @@ https://github.com/rishuinfinity/WallpaperSwitcher
 ## Screenshots
 <p align="center">
   <img src="screenshots/2.gif" />
-  <br/><br/>
+  <br/><br/><br/>
   <img src="screenshots/5.png" />
-  <br/>
   <img src="screenshots/1.png" />
 
 </p>
