@@ -54,6 +54,7 @@ https://github.com/rishuinfinity/WallpaperSwitcher
 </p>
 <!-- ![Screenshot](screenshots/4.png)
 ![Screenshot](screenshots/3.png)
+![Screenshot](screenshots/5.png)
 ![Screenshot](screenshots/2.png)
 ![Screenshot](screenshots/setting.png) -->
 
@@ -76,6 +77,8 @@ This extension has following features:
   * Sequential : Wallpaper changes in a cyclic order
   * Random : Wallpaper changes in a random order
 * Option to set time-delay in seconds
+* Panel indicator for quick access to the extension preferences
+
 
 ## Getting Started
 
