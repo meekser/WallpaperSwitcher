@@ -9,4 +9,5 @@
   ],
   "url": "https://github.com/meekser/WallpaperSwitcher",
   "settings-schema": "org.gnome.shell.extensions.WallpaperSwitcherMeekser"
+  "version-name": "1.0.0"
 }
