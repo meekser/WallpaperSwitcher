@@ -1,181 +1,196 @@
 /*
-* Name: Wallpaper Switcher
-* Description: Extension to automatically Change wallpaper after a given interval
-* Author: Rishu Raj
-*/
-'use strict';
+ * Preferences for Wallpaper Switcher, ported to GNOME Shell 45–50+ ESM APIs.
+ */
 
-////////////////////////////////////////////////////////////
-// Const Imports
-const {Gtk,Adw,Gio,GLib,Gdk,GdkPixbuf}  = imports.gi;
-const ExtensionUtils = imports.misc.extensionUtils;
-const Me             = ExtensionUtils.getCurrentExtension();
-const lib            = Me.imports.lib;
+import Adw from 'gi://Adw';
+import Gdk from 'gi://Gdk';
+import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
+import Gtk from 'gi://Gtk';
 
+import {
+    ExtensionPreferences,
+} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
-////////////////////////////////////////////////////////////
-// Prefs.js default functions
-function init(){
-    const styleProvider = new Gtk.CssProvider();
-    styleProvider.load_from_path(GLib.build_filenamev([Me.path, 'stylesheet.css']));
-    Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), styleProvider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION);
-}
+import * as lib from './lib.js';
 
-function fillPreferencesWindow(window) {
-    window.set_default_size(530, 400);
-    let builder = Gtk.Builder.new();
-    // Global Variable for prefs window
-    let mySetting = ExtensionUtils.getSettings('org.gnome.shell.extensions.WallpaperSwitcher');
-    builder.add_from_file(Me.path + '/prefs.ui');
-    // Creating variables corresponding to objects
-    let frequencyChanger = builder.get_object('frequency-changer');
-    let switchingModeComboRow = builder.get_object("switching-mode-comborow");
-    let wallpaperPathRow = builder.get_object("wallpaper-path-row");
-    let wallpaperPathEntry = builder.get_object("wallpaper-path-entry");
-    let showCurrentButton = builder.get_object("show-current");
-    let resetButton = builder.get_object("reset-button");
-    let errorGroup=builder.get_object("error-group");
-    let errorRow = builder.get_object("error-row");
-    let errorView= builder.get_object("error-view");
+export default class WallpaperSwitcherPreferences extends ExtensionPreferences {
+    fillPreferencesWindow(window) {
+        window.set_default_size(530, 400);
 
-    //
-    let dropErr = ["WC","NIF","PNE","Reset"];
-    if(dropErr.includes(lib.getErrorMsg().split(":--")[0])) lib.setErrorMsg("");
-    //
+        const styleProvider = new Gtk.CssProvider();
+        styleProvider.load_from_path(GLib.build_filenamev([
+            this.path,
+            'stylesheet.css',
+        ]));
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(),
+            styleProvider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        );
 
-    //Adding bindings and connecting
-    // Frequency Changer
-    mySetting.bind(
-        'frequency',
-        frequencyChanger,
-        'value',
-        Gio.SettingsBindFlags.DEFAULT
-    );
-    // Switching Mode ComboRow
-    switchingModeComboRow.connect("notify::selected-item", ()=>{
-        lib.setSwitchingMode(switchingModeComboRow.selected);
-    });
-    switchingModeComboRow.selected = lib.getSwitchingMode();
+        this._settings = this.getSettings();
+        lib.setSettings(this._settings);
 
+        const builder = Gtk.Builder.new();
+        builder.add_from_file(GLib.build_filenamev([this.path, 'prefs.ui']));
 
-    // WallpaperPathEntry
-    function updatePathEntry(){
-        let isValid = lib.getWallpaperList(wallpaperPathEntry.text).length;
-        if(isValid > 0){
-            wallpaperPathEntry.primary_icon_name="go-next-symbolic";
-            wallpaperPathRow.subtitle = wallpaperPathEntry.text;
-            wallpaperPathRow.expanded = false;
-            lib.setWallpaperPath(wallpaperPathEntry.text);
-            lib.setErrorMsg( "WC:--" + String(isValid));
-        }
-        else{
-            wallpaperPathEntry.primary_icon_name="mail-mark-junk-symbolic";
-        }
-    }
-    wallpaperPathRow.subtitle = lib.getWallpaperPath();
-    wallpaperPathEntry.text = lib.getWallpaperPath();
-    wallpaperPathEntry.primary_icon_name="go-next-symbolic";
-    wallpaperPathEntry.connect("activate",() => {
-        updatePathEntry();
-    });
-    wallpaperPathEntry.connect("icon-release",() => {
-        updatePathEntry();
-    });
+        const frequencyChanger = builder.get_object('frequency-changer');
+        const switchingModeComboRow = builder.get_object('switching-mode-comborow');
+        const wallpaperPathRow = builder.get_object('wallpaper-path-row');
+        const wallpaperPathEntry = builder.get_object('wallpaper-path-entry');
+        const showCurrentButton = builder.get_object('show-current');
+        const resetButton = builder.get_object('reset-button');
+        const errorGroup = builder.get_object('error-group');
+        const errorRow = builder.get_object('error-row');
+        const errorView = builder.get_object('error-view');
 
-    // Show current wallpaper in nautilus
-    showCurrentButton.connect("clicked",()=>{
-        let wallpaper = lib.getCurrentWallpaperUri();
-        let command = "nautilus -s '"+wallpaper+"'";
-        GLib.spawn_command_line_async(command);
-    });
-    // Reset Button
-    resetButton.connect('clicked',()=>{
-        lib.setFrequency(300);
-        lib.setWallpaperPath("/usr/share/backgrounds");
-        // would need to relook wallpaper path
-        switchingModeComboRow.selected = 1;
-        lib.setWallpaperOverlaySupport(false);
-        lib.setErrorMsg("Reset")
-    });
+        const dropErrors = ['WC', 'NIF', 'PNE', 'Reset'];
+        if (dropErrors.includes(lib.getErrorMsg().split(':--')[0]))
+            lib.setErrorMsg('');
 
-    // Error Row
-    function showSimpleError(icon_name, title){
-        let errorRowActionRow = errorRow.get_first_child().get_first_child().get_first_child();
-        let errorRowSuffix = errorRowActionRow.get_first_child().get_last_child();
-        errorGroup.visible = true;
-        errorRow.enable_expansion=false;
-        errorRow.expanded = false;
-        errorRowActionRow.activatable = false;
-        errorRowSuffix.visible = false;
-        errorRow.title=title;
-        errorRow.icon_name=icon_name;
-    }
-    function showComplexError(icon_name,title, description){
-        let errorRowActionRow = errorRow.get_first_child().get_first_child().get_first_child();
-        let errorRowSuffix = errorRowActionRow.get_first_child().get_last_child();
-        errorGroup.visible = true;
-        errorRow.enable_expansion=true;
-        errorRow.expanded = false;
-        errorRowActionRow.activatable = true;
-        errorRowSuffix.visible = true;
-        errorRow.title=title;
-        errorRow.icon_name=icon_name;
-        errorView.label=description;
-    }
-    function updateErrorShowStatus(){
-        let errMsgs = lib.getErrorMsg().split(":--");
-        if(errMsgs[0] == null){
-            errMsgs.push("");
-        }
-        switch(errMsgs[0]){
-            case "":
-                // errorGroup.visible = false;
-                showSimpleError(
-                    "face-smile-symbolic",
-                    "Thanks for using Wallpaper Switcher"
-                );
-                break;
-            case "UWO":
-                showSimpleError(
-                    "face-smile-symbolic",
-                    "Thanks for using Wallpaper Switcher and Wallpaper Overlay"
-                );
-                break;
-            case "WC":
-                showSimpleError(
-                    "emblem-default-symbolic",
-                    errMsgs[1] + " Wallpapers Collected"
-                );
-                break;
-            case "NIF":
-                showComplexError(
-                    "dialog-warning-symbolic",
-                    "No images found",
-                    "No images found on "+errMsgs[1]
-                );
-                break;
-            case "PNE":
-                showComplexError(
-                    "dialog-error-symbolic",
-                    "Path Does not Exist",
-                    "The path "+errMsgs[1] + " does not exist."
-                );
-                break;
-            case "Reset":
-                showSimpleError(
-                    "emblem-default-symbolic",
-                    "Settings have been reset"
+        this._settings.bind(
+            'frequency',
+            frequencyChanger,
+            'value',
+            Gio.SettingsBindFlags.DEFAULT
+        );
+
+        switchingModeComboRow.connect('notify::selected-item', () => {
+            lib.setSwitchingMode(switchingModeComboRow.selected);
+        });
+        switchingModeComboRow.selected = lib.getSwitchingMode();
+
+        const updatePathEntry = () => {
+            const path = wallpaperPathEntry.text.trim();
+            const validCount = path ? lib.getWallpaperList(path).length : 0;
+
+            if (validCount > 0) {
+                wallpaperPathEntry.primary_icon_name = 'go-next-symbolic';
+                wallpaperPathRow.subtitle = path;
+                wallpaperPathRow.expanded = false;
+                lib.setWallpaperPath(path);
+                lib.setErrorMsg(`WC:--${validCount}`);
+            } else {
+                wallpaperPathEntry.primary_icon_name = 'mail-mark-junk-symbolic';
+            }
+        };
+
+        wallpaperPathRow.subtitle = lib.getWallpaperPath();
+        wallpaperPathEntry.text = lib.getWallpaperPath();
+        wallpaperPathEntry.primary_icon_name = 'go-next-symbolic';
+        wallpaperPathEntry.connect('activate', updatePathEntry);
+        wallpaperPathEntry.connect('icon-release', updatePathEntry);
+
+        showCurrentButton.connect('clicked', () => {
+            const wallpaper = lib.getCurrentWallpaperUri();
+            if (!wallpaper)
+                return;
+
+            const command = `nautilus -s ${GLib.shell_quote(wallpaper)}`;
+            GLib.spawn_command_line_async(command);
+        });
+
+        resetButton.connect('clicked', () => {
+            lib.setFrequency(300);
+            lib.setWallpaperPath('/usr/share/backgrounds');
+            switchingModeComboRow.selected = 1;
+            lib.setErrorMsg('Reset');
+        });
+
+        const showSimpleError = (iconName, title) => {
+            const actionRow = errorRow.get_first_child()?.get_first_child()?.get_first_child();
+            const suffix = actionRow?.get_first_child()?.get_last_child();
+
+            errorGroup.visible = true;
+            errorRow.enable_expansion = false;
+            errorRow.expanded = false;
+            if (actionRow)
+                actionRow.activatable = false;
+            if (suffix)
+                suffix.visible = false;
+            errorRow.title = title;
+            errorRow.icon_name = iconName;
+        };
+
+        const showComplexError = (iconName, title, description) => {
+            const actionRow = errorRow.get_first_child()?.get_first_child()?.get_first_child();
+            const suffix = actionRow?.get_first_child()?.get_last_child();
+
+            errorGroup.visible = true;
+            errorRow.enable_expansion = true;
+            errorRow.expanded = false;
+            if (actionRow)
+                actionRow.activatable = true;
+            if (suffix)
+                suffix.visible = true;
+            errorRow.title = title;
+            errorRow.icon_name = iconName;
+            errorView.label = description;
+        };
+
+        const updateErrorShowStatus = () => {
+            const errMsgs = lib.getErrorMsg().split(':--');
+            const type = errMsgs[0] ?? '';
+            const value = errMsgs[1] ?? '';
+
+            switch (type) {
+                case '':
+                    showSimpleError(
+                        'face-smile-symbolic',
+                        'Thanks for using Wallpaper Switcher'
                     );
-                break;
-            default:
-                showComplexError("dialog-error-symbolic","Some Error Occured",String(errMsgs));
-        }
+                    break;
+                case 'UWO':
+                    showSimpleError(
+                        'face-smile-symbolic',
+                        'Thanks for using Wallpaper Switcher and Wallpaper Overlay'
+                    );
+                    break;
+                case 'WC':
+                    showSimpleError(
+                        'emblem-default-symbolic',
+                        `${value} Wallpapers Collected`
+                    );
+                    break;
+                case 'NIF':
+                    showComplexError(
+                        'dialog-warning-symbolic',
+                        'No images found',
+                        `No images found on ${value}`
+                    );
+                    break;
+                case 'PNE':
+                    showComplexError(
+                        'dialog-error-symbolic',
+                        'Path Does not Exist',
+                        `The path ${value} does not exist.`
+                    );
+                    break;
+                case 'Reset':
+                    showSimpleError(
+                        'emblem-default-symbolic',
+                        'Settings have been reset'
+                    );
+                    break;
+                default:
+                    showComplexError(
+                        'dialog-error-symbolic',
+                        'Some Error Occurred',
+                        String(errMsgs)
+                    );
+                    break;
+            }
+        };
+
+        updateErrorShowStatus();
+        this._settings.connect('changed::error-msg', updateErrorShowStatus);
+
+        window.add(builder.get_object('prefs-page'));
     }
 
-    updateErrorShowStatus();
-    mySetting.connect("changed::error-msg", () => {
-        updateErrorShowStatus();
-    });
-    let page = builder.get_object('prefs-page');
-    window.add(page);
+    disable() {
+        this._settings = null;
+        lib.setSettings(null);
+    }
 }

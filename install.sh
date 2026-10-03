@@ -1,103 +1,65 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-SRC_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )";
-LOG_DIR="${SRC_DIR}/log"
-LOG_FILE="${LOG_DIR}/build.log";
-mkdir -p "${LOG_DIR}"
-if [[ -f "${LOG_FILE}" ]]; then
-  echo '' >> "${LOG_FILE}"
-  echo "$(date '+%d/%m/%Y %H:%M:%S')" >> "${LOG_FILE}"
-  echo '' >> "${LOG_FILE}"
-else
-  touch "${LOG_FILE}"
-  echo "$(date '+%d/%m/%Y %H:%M:%S')" >> "${LOG_FILE}"
-  echo '' >> "${LOG_FILE}"
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+EXT_UUID="WallpaperSwitcher@meekser"
+SRC_DIR="${SCRIPT_DIR}/src"
 
-INSTALL_DIR="${HOME}/.local/share/gnome-shell/extensions"
 if [[ "$(id -u)" -eq 0 ]]; then
-  chown "${SUDO_USER}":"${SUDO_USER}" -R "${LOG_DIR}"
-  INSTALL_DIR="/usr/share/gnome-shell/extensions"
+    INSTALL_BASE="/usr/share/gnome-shell/extensions"
+else
+    INSTALL_BASE="${HOME}/.local/share/gnome-shell/extensions"
 fi
+INSTALL_DIR="${INSTALL_BASE}/${EXT_UUID}"
+
+if [[ ! -f "${SRC_DIR}/metadata.json" || ! -f "${SRC_DIR}/extension.js" ]]; then
+    echo "[!] Source files not found in ${SRC_DIR}" >&2
+    exit 1
+fi
+
+SHELL_VERSION="$(sed -n 's/.*\"shell-version\"[[:space:]]*:[[:space:]]*\[\"\([^\"]*\)\"\].*/\1/p' "${SRC_DIR}/metadata.json" | head -n1)"
+
+echo "[+] Installing ${EXT_UUID} to ${INSTALL_DIR}"
+rm -rf "${INSTALL_DIR}"
 mkdir -p "${INSTALL_DIR}"
 
-# print <arg>
-print() {
-  echo -e "${NC}[+] ${1}${NC}"
-  echo -e "[+] ${1}" &>> "$LOG_FILE"
-}
+# Copy the CONTENTS of src/, not the src/ directory itself.
+cp -a "${SRC_DIR}/." "${INSTALL_DIR}/"
 
-# print_warning <arg>
-print_warning() {
-  echo -e "${NC}[${YELLOW}!${NC}] ${1}${NC}"
-  echo -e "[!] ${1}" &>> "$LOG_FILE"
-}
-
-# print_failed <arg>
-print_failed() {
-  echo -e "${NC}[${RED}x${NC}] ${1}${NC}"
-  echo -e "[x] ${1}" &>> "$LOG_FILE"
-}
-
-# print_success <arg>
-print_success() {
-  echo -e "${NC}[${GREEN}\xE2\x9C\x94${NC}] ${1}${NC}"
-  echo -e "[✔] ${1}" &>> "$LOG_FILE"
-}
-
-# print_suggestion <arg>
-print_suggestion() {
-  echo -e "${NC}[${BLUE}#${NC}] ${1}${NC}"
-  echo -e "[#] ${1}" &>> "$LOG_FILE"
-}
-
-# is_failed <success_message> <failed_message>
-is_failed() {
-  if [[ "$?" -eq 0 ]]; then
-    print_success "${1}"
-  else
-    print_failed "${2}"
-  fi
-}
-
-# is_warning <success_message> <warning_message>
-is_warning() {
-  if [[ "$?" -eq 0 ]]; then
-    print_success "${1}"
-  else
-    print_warning "${2}"
-  fi
-}
-
-# install extension
-install() {
-  print "Installing to ${INSTALL_DIR}"
-  rm -rf "${INSTALL_DIR}/WallpaperSwitcher@Rishu"
-  cp -rf "${SRC_DIR}/src" "${INSTALL_DIR}/WallpaperSwitcher@Rishu" &>> "$LOG_FILE"
-  glib-compile-schemas --strict --targetdir="${INSTALL_DIR}/WallpaperSwitcher@Rishu/schemas" "${INSTALL_DIR}/WallpaperSwitcher@Rishu/schemas"
-  mkdir -p "$HOME/.local/var/log/"
-  touch "$HOME/.local/var/log/WallpaperSwitcher.log"
-  is_failed "Done" "Skipping: Can not install to ${INSTALL_DIR}. See log for more info."
-}
-
-# build for release
-build() {
-  print "Creating WallpaperSwitcher@Rishu.zip"
-  mkdir -p "${SRC_DIR}/out"
-  cd "src"
-  zip -6rX "$SRC_DIR/out/WallpaperSwitcher@Rishu.zip" * &>> "$LOG_FILE"
-  cd ..
-  is_failed "Done" "Skipping: Creating zip is failed. See log for more info."
-}
-
-# Let's start
-if [[ "${1}" == "-b" ]]; then
-  build
-else
-  install
+if [[ -d "${INSTALL_DIR}/schemas" ]]; then
+    glib-compile-schemas "${INSTALL_DIR}/schemas"
 fi
+
+# Basic structural validation before reporting success.
+for required in extension.js metadata.json prefs.js lib.js; do
+    if [[ ! -f "${INSTALL_DIR}/${required}" ]]; then
+        echo "[!] Missing installed file: ${INSTALL_DIR}/${required}" >&2
+        exit 1
+    fi
+done
+
+if [[ ! -d "${INSTALL_DIR}/schemas" ]]; then
+    echo "[!] Missing schemas directory: ${INSTALL_DIR}/schemas" >&2
+    exit 1
+fi
+
+echo "[✔] Files installed"
+if [[ -n "${SHELL_VERSION}" ]]; then
+    echo "[✔] Target GNOME Shell: ${SHELL_VERSION}"
+fi
+
+echo
+echo "IMPORTANT: GNOME Shell loads newly installed user extensions in the next session."
+echo "Log out and log in again (or reboot) before enabling the extension."
+echo
+echo "After logging in again, verify with:"
+echo "  gnome-extensions info ${EXT_UUID}"
+echo
+echo "Then enable with:"
+echo "  gnome-extensions enable ${EXT_UUID}"
+echo
+echo "Preferences:"
+echo "  gnome-extensions prefs ${EXT_UUID}"
+echo
+echo "Installed files:"
+echo "  ${INSTALL_DIR}"
